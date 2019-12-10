@@ -9,6 +9,7 @@ use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::Packet;
 use std::collections::HashMap;
+use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 
@@ -19,9 +20,15 @@ const XIV_MAGIC: [u8; 4] = [0x52, 0x52, 0xa0, 0x41];
 
 fn main() {
     let devices = Device::list().unwrap();
+    let args: Vec<String> = env::args().collect();
+    let mut interface = DEVICE;
+    if args.len() > 1 {
+        interface = &args[1];
+    }
+    println!("looking for {}", interface);
     let mut device: Option<Device> = None;
     for dev in devices {
-        if dev.name.eq(DEVICE) {
+        if dev.name.eq(interface) {
             println!("found {}", dev.name);
             device = Some(dev);
             break;

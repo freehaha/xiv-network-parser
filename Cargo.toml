@@ -1,5 +1,5 @@
 [package]
-name = "ffxiv-parser"
+name = "ffxiv-network-parser"
 version = "0.1.0"
 authors = ["Freehaha <freehaha@gmail.com>"]
 edition = "2018"

@@ -1,4 +1,4 @@
 #/bin/sh
 cargo build
-sudo setcap cap_net_raw,cap_net_admin,cap_sys_ptrace=+eip target/debug/ffxiv-parser
+sudo setcap cap_net_raw,cap_net_admin,cap_sys_ptrace=+eip ./target/debug/ffxiv-network-parser
 cargo run
