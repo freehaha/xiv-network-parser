@@ -66,6 +66,7 @@ fn main() {
         drop = stats.dropped;
         let packet = cap.next().unwrap();
         if parser.ended {
+            println!("ended, restarting");
             port = 0;
         }
         if port == 0 && skip == -1 {

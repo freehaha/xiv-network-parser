@@ -112,8 +112,11 @@ impl<'a> Parser<'a> {
             let mut msg = vec![b'p', b' ', self.sn];
             msg.extend_from_slice(&p.to_bytes());
             self.socket.send(msg, 0).unwrap();
+            self.sn = self.sn + 1;
+            if self.sn >= 128 {
+                self.sn = self.sn - 128;
+            }
             self.ended = match p.packet_type {
-                XivPacketType::Logout => true,
                 XivPacketType::Lobby => true,
                 _ => false,
             };

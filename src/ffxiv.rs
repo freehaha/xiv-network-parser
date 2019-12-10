@@ -11,7 +11,7 @@ pub enum XivPacketType {
     Unknown,
     Lobby,
     Ignore,
-    Logout = 0x0274,
+    LeaveZone = 0x0274,
     Action = 0x01c6,
     Action8 = 0x2c03,
     Action16 = 0x02be,
@@ -28,7 +28,7 @@ impl XivPacketType {
         let mut rdr = Cursor::new(packet);
         rdr.seek(SeekFrom::Start(12)).unwrap();
         let flag = rdr.read_u8().unwrap();
-        if flag == 8 {
+        if flag != 3 {
             return XivPacketType::Ignore;
         }
         rdr.seek(SeekFrom::Start(16)).unwrap();
@@ -39,7 +39,7 @@ impl XivPacketType {
         rdr.seek(SeekFrom::Start(18)).unwrap();
         let ptype = rdr.read_u32::<LittleEndian>().unwrap();
         return match ptype {
-            0x0274 => XivPacketType::Logout,
+            0x0274 => XivPacketType::LeaveZone,
             0x01c6 => XivPacketType::Action,
             0x02c3 => XivPacketType::Action8,
             0x02be => XivPacketType::Action16,
