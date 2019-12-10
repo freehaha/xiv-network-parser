@@ -62,6 +62,7 @@ fn main() {
             port = 0;
         }
         if port == 0 && skip == -1 {
+            println!("cold start! collecting packets to search for game packets...");
             parser = Parser::new(&socket);
             skip = 5;
             next_seq = 0;
