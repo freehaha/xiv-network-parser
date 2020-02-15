@@ -24,7 +24,6 @@ impl<'a> Parser<'a> {
     pub fn parse_packet(&mut self, payload: &Vec<u8>) {
         self.buffer.extend_from_slice(payload);
         let mut len = self.buffer.len();
-        // println!("processing packet len={}", len);
         while len >= 40 {
             let mut rdr = Cursor::new(self.buffer.as_slice());
             rdr.seek(SeekFrom::Start(16)).unwrap();

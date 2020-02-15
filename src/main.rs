@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::process;
 
 const DEVICE: &str = "tap0";
 const PATH: &str = "/tmp/ffxiv_packets";
@@ -58,13 +59,25 @@ fn main() {
     let mut skip = 0;
 
     loop {
-        let stats = cap.stats().unwrap();
-        if stats.dropped > drop {
-            port = 0;
-            println!("packet drop detected, restarting");
+        match cap.stats() {
+            Ok(stats) => {
+                if stats.dropped > drop {
+                    port = 0;
+                    println!("packet drop detected, restarting");
+                }
+                drop = stats.dropped;
+            }
+            Err(e) => {
+                eprintln!("{}. exiting", e);
+                process::exit(1);
+            }
         }
-        drop = stats.dropped;
-        let packet = cap.next().unwrap();
+        let packet = cap.next();
+        if let Err(e) = packet {
+            eprintln!("{}. exiting", e);
+            process::exit(1);
+        }
+        let packet = packet.unwrap();
         if parser.ended {
             println!("ended, restarting");
             port = 0;
@@ -95,7 +108,7 @@ fn main() {
                 // println!("seq: {}", tcp.get_sequence());
                 if port == 0 {
                     if skip > 0 {
-                        skip = skip - 1;
+                        skip -= 1;
                         continue;
                     }
                     if payload.len() > 4 && XIV_MAGIC == payload[0..4] {
@@ -119,11 +132,13 @@ fn main() {
                         println!("too many packets cached, restarting..");
                         let mut min_seq = 0xffffffff;
                         for &sseq in future_packets.keys() {
-                            if XIV_MAGIC != future_packets.get(&sseq).unwrap()[0..4] {
-                                continue;
-                            }
-                            if sseq < min_seq {
-                                min_seq = sseq;
+                            if let Some(packet) = future_packets.get(&sseq) {
+                                if packet.len() >= 4 && XIV_MAGIC != packet[0..4] {
+                                    continue;
+                                }
+                                if sseq < min_seq {
+                                    min_seq = sseq;
+                                }
                             }
                         }
                         if min_seq < 0xffffffff {
