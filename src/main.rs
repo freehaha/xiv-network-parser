@@ -41,7 +41,7 @@ fn main() {
     }
 
     let cap = Capture::from_device(device.unwrap()).unwrap();
-    let cap = cap.buffer_size(4096 * 100).snaplen(4096).timeout(250);
+    let cap = cap.buffer_size(1024 * 4 * 1024).snaplen(4096).timeout(250);
     let mut cap = cap.open().unwrap();
     cap.filter("src net 124.150.157 and (tcp)")
         .expect("failed to set filter");
@@ -89,10 +89,26 @@ fn main() {
             next_seq = 0;
         }
 
-        // parsing closure
-        let mut parse_tcp = |tcp: TcpPacket| {
+        let eth = EthernetPacket::new(packet.data).unwrap();
+        let v4p: Ipv4Packet;
+        let mut tcp: Option<TcpPacket> = None;
+        if let EtherTypes::Ipv4 = eth.get_ethertype() {
+            v4p = Ipv4Packet::new(eth.payload()).unwrap();
+            if let IpNextHeaderProtocols::Tcp = v4p.get_next_level_protocol() {
+                tcp = TcpPacket::new(v4p.payload());
+            }
+        } else if let Some(_v4p) = Ipv4Packet::new(packet.data) {
+            v4p = _v4p;
+            // no eth packet, possibly ip-level routed
+            if let IpNextHeaderProtocols::Tcp = v4p.get_next_level_protocol() {
+                tcp = TcpPacket::new(v4p.payload());
+            } else {
+                eprintln!("not IP!")
+            }
+        }
+        if let Some(tcp) = tcp {
             if port > 0 && tcp.get_destination() != port {
-                return;
+                continue;
             }
             // println!(
             //     "{}:{} => {}:{}",
@@ -101,13 +117,22 @@ fn main() {
             //     v4p.get_destination(),
             //     tcp.get_destination()
             // );
+
+            while future_packets.contains_key(&next_seq) {
+                let payload = future_packets.remove(&next_seq).unwrap();
+                println!("found cached packet {}", next_seq);
+                parser.parse_packet(&payload);
+                next_seq += payload.len() as u32;
+                next_seq = next_seq & 0xffffffff;
+            }
+
             let payload = tcp.payload().to_vec();
             // println!("payload len: {}", payload.len());
             // println!("seq: {}", tcp.get_sequence());
             if port == 0 {
                 if skip > 0 {
                     skip -= 1;
-                    return;
+                    continue;
                 }
                 if payload.len() > 4 && XIV_MAGIC == payload[0..4] {
                     println!("got game packet! using port {}", tcp.get_destination());
@@ -115,7 +140,7 @@ fn main() {
                     next_seq = tcp.get_sequence();
                     skip = -1;
                 } else {
-                    return;
+                    continue;
                 }
             }
 
@@ -141,46 +166,28 @@ fn main() {
                     }
                     if min_seq < 0xffffffff {
                         println!("continuing from {}", min_seq);
-                        let payload = future_packets.get(&min_seq).unwrap();
-                        next_seq = min_seq + packet.len() as u32;
+                        let payload = future_packets.remove(&min_seq).unwrap();
+                        next_seq = min_seq + payload.len() as u32;
+                        next_seq = next_seq & 0xffffffff;
                         parser = Parser::new(&socket);
-                        parser.parse_packet(payload);
-                        return;
+                        parser.parse_packet(&payload);
+                        continue;
                     }
                     future_packets.clear();
                     port = 0;
-                    return;
+                    continue;
                 }
             } else {
+                if next_seq != tcp.get_sequence() {
+                    println!("sequence mismatch (past packets?) discard... {} {}",next_seq, tcp.get_sequence());
+                    continue;
+                }
                 // println!("expecting seq {}, got {}", next_seq, tcp.get_sequence());
                 parser.parse_packet(&payload);
                 // process_packet(&mut buffer, &payload);
                 next_seq += payload.len() as u32;
-                while future_packets.contains_key(&next_seq) {
-                    let payload = future_packets.remove(&next_seq).unwrap();
-                    println!("found future packet {}", next_seq);
-                    parser.parse_packet(&payload);
-                    next_seq += payload.len() as u32;
-                }
             }
             next_seq = next_seq & 0xffffffff;
-        };
-
-        let eth = EthernetPacket::new(packet.data).unwrap();
-        if let EtherTypes::Ipv4 = eth.get_ethertype() {
-            let v4p = Ipv4Packet::new(eth.payload()).unwrap();
-            if let IpNextHeaderProtocols::Tcp = v4p.get_next_level_protocol() {
-                let tcp = TcpPacket::new(v4p.payload()).unwrap();
-                parse_tcp(tcp);
-            }
-        } else if let Some(v4p) = Ipv4Packet::new(packet.data) {
-            // no eth packet, possibly ip-level routed
-            if let IpNextHeaderProtocols::Tcp = v4p.get_next_level_protocol() {
-                let tcp = TcpPacket::new(v4p.payload()).unwrap();
-                parse_tcp(tcp);
-            } else {
-                eprintln!("not IP!")
-            }
         }
     }
 }
