@@ -6,6 +6,7 @@ use pcap::Device;
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::Ipv4Packet;
+use pnet::packet::tcp::TcpFlags;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::Packet;
 use std::collections::HashMap;
@@ -127,6 +128,11 @@ fn main() {
             }
 
             let payload = tcp.payload().to_vec();
+            if port > 0 && (tcp.get_flags() & TcpFlags::FIN) > 0 {
+                println!("FIN found, restarting");
+                port = 0;
+                continue;
+            }
             // println!("payload len: {}", payload.len());
             // println!("seq: {}", tcp.get_sequence());
             if port == 0 {
@@ -134,7 +140,8 @@ fn main() {
                     skip -= 1;
                     continue;
                 }
-                if payload.len() > 4 && XIV_MAGIC == payload[0..4] {
+                // only use larger packet to bypass heartbeat channel
+                if payload.len() > 104 && XIV_MAGIC == payload[0..4] {
                     println!("got game packet! using port {}", tcp.get_destination());
                     port = tcp.get_destination();
                     next_seq = tcp.get_sequence();
@@ -179,7 +186,11 @@ fn main() {
                 }
             } else {
                 if next_seq != tcp.get_sequence() {
-                    println!("sequence mismatch (past packets?) discard... {} {}",next_seq, tcp.get_sequence());
+                    println!(
+                        "sequence mismatch (past packets?) discard... {} {}",
+                        next_seq,
+                        tcp.get_sequence()
+                    );
                     continue;
                 }
                 // println!("expecting seq {}, got {}", next_seq, tcp.get_sequence());
