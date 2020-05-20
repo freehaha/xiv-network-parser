@@ -19,6 +19,7 @@ const DEVICE: &str = "tap0";
 const PATH: &str = "/tmp/ffxiv_packets";
 const ENDPOINT: &str = "ipc:///tmp/ffxiv_packets";
 const XIV_MAGIC: [u8; 4] = [0x52, 0x52, 0xa0, 0x41];
+const ENCODING_PLAIN: [u8; 2] = [0x01, 0x00];
 
 fn main() {
     let devices = Device::list().unwrap();
@@ -85,6 +86,7 @@ fn main() {
         }
         if port == 0 && skip == -1 {
             println!("cold start! collecting packets to search for game packets...");
+            future_packets.clear();
             parser = Parser::new(&socket);
             skip = 5;
             next_seq = 0;
@@ -108,6 +110,10 @@ fn main() {
             }
         }
         if let Some(tcp) = tcp {
+            if port > 0 && parser.last_heartbeat.elapsed().as_secs() > 30 {
+                println!("lost heartbeat, resetting");
+                port = 0;
+            }
             if port > 0 && tcp.get_destination() != port {
                 continue;
             }
@@ -141,7 +147,10 @@ fn main() {
                     continue;
                 }
                 // only use larger packet to bypass heartbeat channel
-                if payload.len() > 104 && XIV_MAGIC == payload[0..4] {
+                if payload.len() >= 104
+                    && XIV_MAGIC == payload[0..4]
+                    && payload[32..33] != ENCODING_PLAIN
+                {
                     println!("got game packet! using port {}", tcp.get_destination());
                     port = tcp.get_destination();
                     next_seq = tcp.get_sequence();
@@ -199,6 +208,8 @@ fn main() {
                 next_seq += payload.len() as u32;
             }
             next_seq = next_seq & 0xffffffff;
+        } else {
+            println!("non tcp!")
         }
     }
 }

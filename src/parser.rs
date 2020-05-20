@@ -2,6 +2,7 @@ use crate::ffxiv::{XivPacket, XivPacketType};
 use byteorder::{LittleEndian, ReadBytesExt};
 use inflate::inflate_bytes_zlib;
 use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::time::Instant;
 
 pub struct Parser<'a> {
     pub ended: bool,
@@ -9,6 +10,7 @@ pub struct Parser<'a> {
     socket: &'a zmq::Socket,
     is_debug: bool,
     buffer: Vec<u8>,
+    pub last_heartbeat: Instant,
 }
 
 fn to_hash(bytes: &Vec<u8>) -> String {
@@ -104,10 +106,22 @@ impl<'a> Parser<'a> {
                 packet_type: XivPacketType::from_packet(&packet),
                 packet: packet,
             };
+            if let XivPacketType::Heartbeat = p.packet_type {
+                len = bytes.len();
+                self.last_heartbeat = Instant::now();
+                continue;
+            }
             if let XivPacketType::Ignore = p.packet_type {
                 len = bytes.len();
                 continue;
             }
+            if let XivPacketType::Lobby = p.packet_type {
+                len = bytes.len();
+                self.ended = true;
+                continue;
+            }
+
+            self.last_heartbeat = Instant::now();
             let mut msg = vec![b'p', b' ', self.sn];
             msg.extend_from_slice(&p.to_bytes());
             self.socket.send(msg, 0).unwrap();
@@ -115,10 +129,6 @@ impl<'a> Parser<'a> {
             if self.sn >= 128 {
                 self.sn = self.sn - 128;
             }
-            self.ended = match p.packet_type {
-                XivPacketType::Lobby => true,
-                _ => false,
-            };
             // println!("hex: {}", to_hash(&packet));
             len = bytes.len();
         }
@@ -130,6 +140,7 @@ impl<'a> Parser<'a> {
             ended: false,
             is_debug: false,
             buffer: Vec::new(),
+            last_heartbeat: Instant::now(), // last heartbeat in -90s from now
         };
     }
 }
