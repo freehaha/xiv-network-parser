@@ -17,17 +17,29 @@ use std::process;
 
 const DEVICE: &str = "tap0";
 const PATH: &str = "/tmp/ffxiv_packets";
-const ENDPOINT: &str = "ipc:///tmp/ffxiv_packets";
 const XIV_MAGIC: [u8; 4] = [0x52, 0x52, 0xa0, 0x41];
 const ENCODING_PLAIN: [u8; 2] = [0x01, 0x00];
 
 fn main() {
     let devices = Device::list().unwrap();
     let args: Vec<String> = env::args().collect();
+    let mut path = PATH;
     let mut interface = DEVICE;
+
     if args.len() > 1 {
+        if args[1] == "-h" {
+            println!("usage: {} [interface] [sock-path]", args[0]);
+            println!("\nexamples:\n\t{} eth0", args[0]);
+            println!("\t{} eth0 /tmp/ffxiv_packets", args[0]);
+            return;
+        }
         interface = &args[1];
     }
+
+    if args.len() > 2 {
+        path = &args[2];
+    }
+
     println!("looking for {}", interface);
     let mut device: Option<Device> = None;
     for dev in devices {
@@ -51,9 +63,11 @@ fn main() {
     let mut next_seq: u32 = 0;
     let ctx = zmq::Context::new();
     let socket = ctx.socket(zmq::PUB).unwrap();
-    socket.bind(ENDPOINT).expect("failed to bind zmq pub");
-    fs::set_permissions(PATH, fs::Permissions::from_mode(0o777))
+    let endpoint = format!("ipc://{}", path);
+    socket.bind(&endpoint).expect("failed to bind zmq pub");
+    fs::set_permissions(path, fs::Permissions::from_mode(0o777))
         .expect("failed to set ipc permissions");
+    println!("xiv packet socket created at {}", path);
     let mut parser = Parser::new(&socket);
     let mut port: u16 = 0;
     let mut future_packets = HashMap::new();
