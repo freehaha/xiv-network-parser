@@ -61,4 +61,8 @@ sock.on("message", (msg) => {
 });
 ```
 
-can also be found in the `example` directory
+This can also be found in the `example` directory.
+
+# Related Projects
+
+- [xiv-dps-parser](https://github.com/freehaha/xiv-dps-parser). Dps parser using only network data.
