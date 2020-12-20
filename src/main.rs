@@ -37,18 +37,12 @@ fn main() {
         if args[1] == "-l" {
             let interfaces = datalink::interfaces();
 
-            let iter = if cfg!(windows) {
-                interfaces
-                    .into_iter()
-                    .find(|e| !e.is_loopback() && !e.ips.is_empty())
-            } else {
-                interfaces
-                    .into_iter()
-                    .find(|e| e.is_up() && !e.is_loopback() && !e.ips.is_empty())
-            };
+            let iter = interfaces
+                .into_iter()
+                .filter(|e| !e.is_loopback() && !e.ips.is_empty());
 
             for iface in iter {
-                println!("found device: {} {}", iface.name, iface.ips[0].ip())
+                println!("d {}:{}", iface.name, iface.ips[0].ip())
             }
             return;
         }
