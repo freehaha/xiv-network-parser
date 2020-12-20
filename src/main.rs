@@ -3,6 +3,7 @@ mod parser;
 use parser::Parser;
 use pcap::Capture;
 use pcap::Device;
+use pnet::datalink::{self};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::Ipv4Packet;
@@ -34,11 +35,12 @@ fn main() {
             return;
         }
         if args[1] == "-l" {
-            for dev in devices {
-                println!("found device: {}", dev.name);
-                if let Some(desc) = dev.desc {
-                    println!("\t{}", desc);
-                }
+            let interfaces = datalink::interfaces();
+            let iter = interfaces
+                .into_iter()
+                .find(|e| e.is_up() && !e.is_loopback() && !e.ips.is_empty());
+            for iface in iter {
+                println!("found device: {} {}", iface.name, iface.ips[0].ip())
             }
             return;
         }
