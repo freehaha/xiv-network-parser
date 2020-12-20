@@ -11,12 +11,10 @@ use pnet::packet::tcp::TcpPacket;
 use pnet::packet::Packet;
 use std::collections::HashMap;
 use std::env;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::process;
 
 const DEVICE: &str = "tap0";
-const PATH: &str = "/tmp/ffxiv_packets";
+const PATH: &str = "127.0.0.1:10801";
 const XIV_MAGIC: [u8; 4] = [0x52, 0x52, 0xa0, 0x41];
 const ENCODING_PLAIN: [u8; 2] = [0x01, 0x00];
 
@@ -63,10 +61,8 @@ fn main() {
     let mut next_seq: u32 = 0;
     let ctx = zmq::Context::new();
     let socket = ctx.socket(zmq::PUB).unwrap();
-    let endpoint = format!("ipc://{}", path);
+    let endpoint = format!("tcp://{}", path);
     socket.bind(&endpoint).expect("failed to bind zmq pub");
-    fs::set_permissions(path, fs::Permissions::from_mode(0o777))
-        .expect("failed to set ipc permissions");
     println!("xiv packet socket created at {}", path);
     let mut parser = Parser::new(&socket);
     let mut port: u16 = 0;
