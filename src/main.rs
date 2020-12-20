@@ -66,7 +66,11 @@ fn main() {
     }
 
     let cap = Capture::from_device(device.unwrap()).unwrap();
-    let cap = cap.buffer_size(1024 * 4 * 1024).snaplen(4096).timeout(250);
+    let cap = if cfg!(windows) {
+        cap.buffer_size(1024 * 4 * 1024).snaplen(4096).timeout(0)
+    } else {
+        cap.buffer_size(1024 * 4 * 1024).snaplen(4096).timeout(250)
+    };
     let mut cap = cap.open().unwrap();
     cap.filter("src net 124.150.157 and (tcp)")
         .expect("failed to set filter");
