@@ -29,6 +29,17 @@ fn main() {
             println!("usage: {} [interface] [sock-path]", args[0]);
             println!("\nexamples:\n\t{} eth0", args[0]);
             println!("\t{} eth0 /tmp/ffxiv_packets", args[0]);
+            println!("usage: {} -l\n", args[0]);
+            println!("\tlists availabli interfaces");
+            return;
+        }
+        if args[1] == "-l" {
+            for dev in devices {
+                println!("found device: {}", dev.name);
+                if let Some(desc) = dev.desc {
+                    println!("\t{}", desc);
+                }
+            }
             return;
         }
         interface = &args[1];
