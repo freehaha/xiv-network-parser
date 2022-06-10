@@ -1,8 +1,10 @@
 use crate::ffxiv::{XivPacket, XivPacketType};
 use byteorder::{LittleEndian, ReadBytesExt};
 use inflate::inflate_bytes_zlib;
-use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::convert::TryInto;
+use std::io::{BufReader, BufWriter, Cursor, Read, Seek, SeekFrom, Write};
 use std::time::Instant;
+use subprocess::{Popen, PopenConfig, Redirection};
 
 pub struct Parser<'a> {
     pub ended: bool,
@@ -11,6 +13,7 @@ pub struct Parser<'a> {
     is_debug: bool,
     buffer: Vec<u8>,
     pub last_heartbeat: Instant,
+    pub oodle_helper: Option<Popen>,
 }
 
 fn to_hash(bytes: &Vec<u8>) -> String {
@@ -33,11 +36,14 @@ impl<'a> Parser<'a> {
             let subpacket_size: usize = rdr.read_u16::<LittleEndian>().unwrap() as usize;
             rdr.seek(SeekFrom::Start(30)).unwrap();
             let _subpacket_count: u16 = rdr.read_u16::<LittleEndian>().unwrap();
-            let encoding: u16 = rdr.read_u16::<LittleEndian>().unwrap();
+            let encoding: u8 = rdr.read_u8().unwrap();
+            let compression: u8 = rdr.read_u8().unwrap();
+            rdr.seek(SeekFrom::Start(36)).unwrap();
+            let decoded_body_length: u32 = rdr.read_u32::<LittleEndian>().unwrap();
             if self.is_debug {
                 println!(
-                    "t: {}, size: {}, count: {}, encoding: {}",
-                    timestamp, subpacket_size, _subpacket_count, encoding
+                    "t: {}, size: {}, count: {}, encoding: {} {}",
+                    timestamp, subpacket_size, _subpacket_count, encoding, compression
                 );
             }
             if len >= subpacket_size {
@@ -52,8 +58,10 @@ impl<'a> Parser<'a> {
                     rdr.read_exact(&mut subpackets)
                         .expect("failed to read subpacket payload");
 
-                    if encoding == 257 || encoding == 256 {
+                    if compression == 1 {
                         self.process_subpackets(timestamp, &subpackets);
+                    } else if compression == 2 {
+                        self.process_subpackets_oodle(timestamp, &subpackets, decoded_body_length);
                     } else {
                         self.process_subpackets_raw(timestamp, &subpackets);
                     }
@@ -133,14 +141,81 @@ impl<'a> Parser<'a> {
             len = bytes.len();
         }
     }
+
+    fn start_oodle_helper(&mut self) {
+        self.oodle_helper = Some(
+            Popen::create(
+                &["./oodle_helper"],
+                PopenConfig {
+                    stdout: Redirection::Pipe,
+                    stdin: Redirection::Pipe,
+                    ..Default::default()
+                },
+            )
+            .unwrap(),
+        );
+    }
+
+    pub fn process_subpackets_oodle(&mut self, t: u64, game_packets: &Vec<u8>, dec_len: u32) {
+        if self.is_debug {
+            println!(
+                "oodle packets len: {} dec_len: {}",
+                game_packets.len(),
+                dec_len
+            );
+        }
+        if self.oodle_helper.is_none() {
+            println!("starting oodle_helper...");
+            self.oodle_helper = Some(
+                Popen::create(
+                    &["./oodle_helper"],
+                    PopenConfig {
+                        stdin: subprocess::Redirection::Pipe,
+                        stdout: subprocess::Redirection::Pipe,
+                        ..Default::default()
+                    },
+                )
+                .unwrap(),
+            );
+            return;
+        }
+
+        let mut bytes = game_packets.clone();
+        let len: u32 = bytes.len().try_into().unwrap();
+
+        let mut input: Vec<u8> = Vec::new();
+        input.append(&mut len.to_le_bytes().to_vec());
+        input.append(&mut dec_len.to_le_bytes().to_vec());
+        input.append(&mut bytes);
+
+        {
+            let mut writer =
+                BufWriter::new(self.oodle_helper.as_mut().unwrap().stdin.as_ref().unwrap());
+            writer.write(&input).expect("oodle write error");
+            writer.flush().expect("oodle flush");
+        }
+
+        {
+            let mut reader =
+                BufReader::new(self.oodle_helper.as_mut().unwrap().stdout.as_ref().unwrap());
+            let psize: u32 = reader.read_u32::<LittleEndian>().unwrap();
+            let mut out = vec![0; psize.try_into().unwrap()];
+            reader.read_exact(out.as_mut_slice()).expect("oodle read");
+            self.process_subpackets_raw(t, &out);
+        }
+    }
+
     pub fn new(socket: &'a zmq::Socket) -> Parser {
-        return Parser {
+        let mut p = Parser {
             socket,
             sn: 0,
             ended: false,
             is_debug: false,
             buffer: Vec::new(),
+            oodle_helper: None,
             last_heartbeat: Instant::now(), // last heartbeat in -90s from now
         };
+        p.start_oodle_helper();
+        return p;
     }
 }

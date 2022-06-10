@@ -1,15 +1,16 @@
 mod ffxiv;
 mod parser;
+extern crate pnet;
 use parser::Parser;
 use pcap::Capture;
 use pcap::Device;
-use pnet::datalink::{self};
 use pnet::packet::ethernet::{EtherTypes, EthernetPacket};
 use pnet::packet::ip::IpNextHeaderProtocols;
 use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::tcp::TcpFlags;
 use pnet::packet::tcp::TcpPacket;
 use pnet::packet::Packet;
+use pnet_datalink::interfaces;
 use std::collections::HashMap;
 use std::env;
 use std::process;
@@ -35,7 +36,7 @@ fn main() {
             return;
         }
         if args[1] == "-l" {
-            let interfaces = datalink::interfaces();
+            let interfaces = interfaces();
 
             let iter = interfaces
                 .into_iter()
@@ -74,7 +75,7 @@ fn main() {
         cap.buffer_size(1024 * 4 * 1024).snaplen(4096).timeout(250)
     };
     let mut cap = cap.open().unwrap();
-    cap.filter("src net 124.150.157 and (tcp)")
+    cap.filter("src net 124.150.157 and (tcp)", true)
         .expect("failed to set filter");
 
     let mut next_seq: u32 = 0;
